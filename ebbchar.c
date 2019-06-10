@@ -5,6 +5,10 @@
 #include <linux/fs.h>             // Header for the Linux file system support
 #include <linux/uaccess.h>        // Required for the copy to user function
 #include <linux/thread_info.h>    // current macro
+#include <linux/semaphore.h>
+#include <linux/wait.h>
+#include <linux/slab.h>
+
 #define  DEVICE_NAME "ebbchar"    ///< The device will appear at /dev/ebbchar using this value
 #define  CLASS_NAME  "ebb"        ///< The device class -- this is a character device driver
 
@@ -25,6 +29,23 @@ static int    devId;                  ///< Stores the device number -- determine
 static struct class*  ebbcharClass  = NULL; ///< The device-driver class struct pointer
 static struct device* ebbcharDevice = NULL; ///< The device-driver device struct pointer
 static pid_t  pid[3];             //pid[0] = process A, pid[1] = process B, pid[2] = process C
+struct semaphore sem;
+wait_queue_head_t wait_queue;
+
+
+int maxA;
+int maxB;
+int maxC;
+
+int allocateA;
+int allocateB;
+int allocateC;
+
+int needA;
+int needB;
+int needC;
+
+atomic_t work = ATOMIC_INIT(0);
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
@@ -44,7 +65,9 @@ static struct file_operations fops =
 };
 
 static int __init ebbchar_init(void) {
-    printk(KERN_INFO "EBBChar: Initializing the EBBChar LKM\n");
+
+    sema_init(&sem, 12);
+    init_waitqueue_head(&wait_queue);
 
     // Try to dynamically allocate a major number for the device -- more difficult but worth it
     devId = register_chrdev(0, DEVICE_NAME, &fops);
@@ -52,7 +75,6 @@ static int __init ebbchar_init(void) {
         printk(KERN_ALERT "EBBChar failed to register a major number\n");
         return devId;
     }
-    printk(KERN_INFO "EBBChar: registered correctly with major number %d\n", devId);
 
     // Register the device class
     ebbcharClass = class_create(THIS_MODULE, CLASS_NAME);
@@ -61,7 +83,6 @@ static int __init ebbchar_init(void) {
         printk(KERN_ALERT "Failed to register device class\n");
         return PTR_ERR(ebbcharClass);          // Correct way to return an error on a pointer
     }
-    printk(KERN_INFO "EBBChar: device class registered correctly\n");
 
     // Register the device driver
     ebbcharDevice = device_create(ebbcharClass, NULL, MKDEV(devId, 0), NULL, DEVICE_NAME);
@@ -71,14 +92,22 @@ static int __init ebbchar_init(void) {
         printk(KERN_ALERT "Failed to create the device\n");
         return PTR_ERR(ebbcharDevice);
     }
-    printk(KERN_INFO "EBBChar: device class created correctly\n"); // Made it! device was initialized
     return 0;
 }
 
 static long practice_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
     switch (cmd) {
         case STATE_A:
-            printk(KERN_INFO "start STATE_A");
+            needA = 3;
+            needB = 0;
+            needC = 3;
+
+            allocateA = 1;
+            allocateB = 4;
+            allocateC = 5;
+
+            atomic_set(&work, sem.count - allocateA - allocateB - allocateC);
+
             if (arg == PROCESS_A) {// determined which process is A
                 printk("process A involked\n");
                 pid[PROCESS_A] = current->pid; 
@@ -91,10 +120,10 @@ static long practice_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
             }
             break;
         case STATE_B:
-            pid[1] = current->pid; 
+
             break;
         case 2:
-            pid[2] = current->pid; 
+
             break;
     }
     return 0;
@@ -105,21 +134,80 @@ static void __exit ebbchar_exit(void) {
     class_unregister(ebbcharClass);                    // unregister the device class
     class_destroy(ebbcharClass);                       // remove the device class
     unregister_chrdev(devId, DEVICE_NAME);             // unregister the major number
-    printk(KERN_INFO "EBBChar: Goodbye from the LKM!\n");
+    printk(KERN_INFO "EBBChar: Goodbye from the Kernel!\n");
 }
 
 static int dev_open(struct inode *inodep, struct file *filep) {
-    printk(KERN_INFO "dev_open EBBChar pid %d\n", current->pid);
     return 0;
 }
 
-static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-    current->pid;
+static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {//get resource
+    char* data = kmalloc(len, GFP_KERNEL);
+    copy_from_user(data, buffer, len);
+    char request = *data;
+    kfree(data);
+    if (current->pid == pid[PROCESS_A]) {
+        if (request > atomic_read(&work)) {
+            DECLARE_WAITQUEUE(process_a, current);
+            add_wait_queue(&wait_queue, &process_a);
+            wait_event(wait_queue, request <= atomic_read(&work));
+            schedule();
+            remove_wait_queue(&wait_queue, &process_a);
+        }
+
+        allocateA += request;
+        needA = needA - request;
+        atomic_set(&work, atomic_read(&work) - request);
+        printk("%s\n","PROCESS_A get resource");
+    } else if (current->pid == pid[PROCESS_B]) {
+        if (request > atomic_read(&work)) {
+            DECLARE_WAITQUEUE(process_b, current);
+            add_wait_queue(&wait_queue, &process_b);
+            wait_event(wait_queue, request <= atomic_read(&work));
+            schedule();
+            remove_wait_queue(&wait_queue, &process_b);
+        }
+
+        allocateB += request;
+        needB = needB - request;
+        atomic_set(&work, atomic_read(&work) - request);
+        printk("%s\n","PROCESS_B get resource");
+    } else {//PROCESS_C
+        if (request > atomic_read(&work)) {
+            DECLARE_WAITQUEUE(process_c, current);
+            add_wait_queue(&wait_queue, &process_c);
+            wait_event(wait_queue, request <= atomic_read(&work));
+            schedule();
+            remove_wait_queue(&wait_queue, &process_c);
+        }
+
+        allocateC += request;
+        needC = needC - request;
+        atomic_set(&work, atomic_read(&work) - request);
+        printk("%s\n","PROCESS_C get resource");
+    }
+
     return 0;
 }
 
-static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
-    printk(KERN_INFO "EBBChar pid %d\n", current->pid);
+static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {//release resource
+    char* data = kmalloc(len, GFP_KERNEL);
+    copy_from_user(data, buffer, len);
+    char request = *data;
+    kfree(data);
+    if (current->pid == pid[PROCESS_A]) {
+        wake_up(&wait_queue);
+        atomic_set(&work, atomic_read(&work) + allocateA);
+        printk("PROCESS_A release work\n");
+    } else if (current->pid == pid[PROCESS_B]) {
+        wake_up(&wait_queue);
+        atomic_set(&work, atomic_read(&work) + allocateB);
+        printk("PROCESS_B release work\n");
+    } else {//PROCESS_C
+        wake_up(&wait_queue);
+        atomic_set(&work, atomic_read(&work) + allocateC);
+        printk("PROCESS_C release work\n");
+    }
     return len;
 }
 

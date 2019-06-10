@@ -1,3 +1,5 @@
+ccflags-y := -std=gnu11 -Wno-declaration-after-statement
+
 obj-m+=ebbchar.o
 
 all: practice5 testebbchar

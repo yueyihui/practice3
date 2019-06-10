@@ -16,66 +16,46 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 
-#define BUFFER_LENGTH 256               ///< The buffer length (crude but fine)
-static char receive[BUFFER_LENGTH];     ///< The receive buffer from the LKM
+#define  STATE_A    0 //allocation=(1,4,5) max=(4,4,8)
+#define  STATE_B    1 //allocation=(1,4,6) max=(4,6,8)
 
 int main(int argc, const char *argv[])
 {
-    if (argc < 3) {
-        perror("must be state STATE_A or STATE_B");
+    if (argc < 2) {
+        perror("must be state PROCESS_A or PROCESS_B or PROCESS_C");
         return -1;
     }
 
     int ret, fd;
-    char stringToSend[BUFFER_LENGTH];
     fd = open("/dev/ebbchar", O_RDWR);             // Open the device with read/write access
     if (fd < 0) {
         perror("Failed to open the device...");
         return errno;
     }
 
-    int state;
-    if (!strcmp(argv[1], "STATE_A"))
-    {
-        state = 0;
-    }
-    else if (!strcmp(argv[1], "STATE_B"))
-    {
-        state = 1;
-    }
-    else
-    {
-        perror("must be state STATE_A or STATE_B");
-        return -1;
-    }
-
-    int identify;
-    if (!strcmp(argv[2], "PROCESS_A")) {
+    int identify;//process id for kernel module
+    char need;
+    char release;
+    if (!strcmp(argv[1], "PROCESS_A")) {
         identify = 0;
-    } else if (!strcmp(argv[2], "PROCESS_B")) {
+        need = 3;
+        release = 4;
+    } else if (!strcmp(argv[1], "PROCESS_B")) {
         identify = 1;
-    } else if (!strcmp(argv[2], "PROCESS_C")) {
+        need = 0;
+        release = 4;
+    } else if (!strcmp(argv[1], "PROCESS_C")) {
         identify = 2;
+        need = 3;
+        release = 8;
     } else {
         perror("must be parameter PROCESS_A or PROCESS_B or PROCESS_C");
         return -1;
     }
 
-    ioctl(fd, state, identify);
-    //ret = write(fd, stringToSend, strlen(stringToSend)); // Send the string to the LKM
-    //if (ret < 0){
-    //    perror("Failed to write the message to the device.");
-    //    return errno;
-    //}
+    ioctl(fd, STATE_A, identify);
 
-    printf("Press ENTER to read back from the device...\n");
-    getchar();
-
-    ret = read(fd, receive, BUFFER_LENGTH);        // Read the response from the LKM
-    if (ret < 0) {
-        perror("Failed to read the message from the device.");
-        return errno;
-    }
-    close(fd);
+    read(fd, &need, 1); // get resource
+    
     return 0;
 }
