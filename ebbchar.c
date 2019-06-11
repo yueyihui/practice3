@@ -29,7 +29,8 @@ static int    devId;                  ///< Stores the device number -- determine
 static struct class*  ebbcharClass  = NULL; ///< The device-driver class struct pointer
 static struct device* ebbcharDevice = NULL; ///< The device-driver device struct pointer
 static pid_t  pid[3];             //pid[0] = process A, pid[1] = process B, pid[2] = process C
-struct semaphore sem;
+
+DEFINE_SEMAPHORE(mutex);
 wait_queue_head_t wait_queue;
 
 
@@ -45,7 +46,9 @@ int needA;
 int needB;
 int needC;
 
-atomic_t work = ATOMIC_INIT(0);
+int work;
+
+bool flags[3] = {false, false, false};
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
@@ -66,7 +69,6 @@ static struct file_operations fops =
 
 static int __init ebbchar_init(void) {
 
-    sema_init(&sem, 12);
     init_waitqueue_head(&wait_queue);
 
     // Try to dynamically allocate a major number for the device -- more difficult but worth it
@@ -98,15 +100,19 @@ static int __init ebbchar_init(void) {
 static long practice_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
     switch (cmd) {
         case STATE_A:
-            needA = 3;
-            needB = 0;
-            needC = 3;
 
-            allocateA = 1;
-            allocateB = 4;
-            allocateC = 5;
+            if (!flags[STATE_A]) {
+                flags[STATE_A] = true;
+                needA = 3;
+                needB = 0;
+                needC = 3;
 
-            atomic_set(&work, sem.count - allocateA - allocateB - allocateC);
+                allocateA = 1;
+                allocateB = 4;
+                allocateC = 5;
+
+                work = 12 - allocateA - allocateB - allocateC;
+            }
 
             if (arg == PROCESS_A) {// determined which process is A
                 printk("process A involked\n");
@@ -147,43 +153,94 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
     char request = *data;
     kfree(data);
     if (current->pid == pid[PROCESS_A]) {
-        if (request > atomic_read(&work)) {
+
+        if (needA == 0 || request > needA) {
+            return 0;
+        }  
+
+checkA:
+        down(&mutex);
+        printk("requestA %d\n", request);
+        printk("work %d\n", work);
+        if (request > work) {
+            up(&mutex);
+
             DECLARE_WAITQUEUE(process_a, current);
             add_wait_queue(&wait_queue, &process_a);
-            wait_event(wait_queue, request <= atomic_read(&work));
+            set_current_state(TASK_INTERRUPTIBLE);
             schedule();
             remove_wait_queue(&wait_queue, &process_a);
+            set_current_state(TASK_RUNNING);
+            goto checkA;
+        } else {
+            up(&mutex);
         }
 
         allocateA += request;
         needA = needA - request;
-        atomic_set(&work, atomic_read(&work) - request);
+        down(&mutex);
+        work = work - request;
+        up(&mutex);
         printk("%s\n","PROCESS_A get resource");
     } else if (current->pid == pid[PROCESS_B]) {
-        if (request > atomic_read(&work)) {
+
+        if (needB == 0 || request > needB) {
+            return 0;
+        }  
+
+checkB:
+        down(&mutex);
+        printk("requestB %d\n", request);
+        printk("work %d\n", work);
+        if (request > work) {
+            up(&mutex);
+
             DECLARE_WAITQUEUE(process_b, current);
             add_wait_queue(&wait_queue, &process_b);
-            wait_event(wait_queue, request <= atomic_read(&work));
+            set_current_state(TASK_INTERRUPTIBLE);
             schedule();
             remove_wait_queue(&wait_queue, &process_b);
+            set_current_state(TASK_RUNNING);
+            goto checkB;
+        } else {
+            up(&mutex);
         }
 
         allocateB += request;
         needB = needB - request;
-        atomic_set(&work, atomic_read(&work) - request);
+        down(&mutex);
+        work = work - request;
+        up(&mutex);
         printk("%s\n","PROCESS_B get resource");
     } else {//PROCESS_C
-        if (request > atomic_read(&work)) {
+
+        if (needC == 0 || request > needC) {
+            return 0;
+        }  
+
+checkC:
+        down(&mutex);
+        printk("requestC %d\n", request);
+        printk("work %d\n", work);
+        if (request > work) {
+            up(&mutex);
+
             DECLARE_WAITQUEUE(process_c, current);
             add_wait_queue(&wait_queue, &process_c);
-            wait_event(wait_queue, request <= atomic_read(&work));
+            set_current_state(TASK_INTERRUPTIBLE);
             schedule();
             remove_wait_queue(&wait_queue, &process_c);
+            set_current_state(TASK_RUNNING);
+            goto checkC;
+        } else {
+            up(&mutex);
         }
 
         allocateC += request;
         needC = needC - request;
-        atomic_set(&work, atomic_read(&work) - request);
+        down(&mutex);
+        work = work - request;
+        up(&mutex);
         printk("%s\n","PROCESS_C get resource");
     }
 
@@ -191,24 +248,27 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 }
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {//release resource
-    char* data = kmalloc(len, GFP_KERNEL);
-    copy_from_user(data, buffer, len);
-    char request = *data;
-    kfree(data);
     if (current->pid == pid[PROCESS_A]) {
+        down(&mutex);
+        work = work + allocateA;
+        up(&mutex);
         wake_up(&wait_queue);
-        atomic_set(&work, atomic_read(&work) + allocateA);
         printk("PROCESS_A release work\n");
     } else if (current->pid == pid[PROCESS_B]) {
+        down(&mutex);
+        work = work + allocateB;
+        printk("%d\n", work);
+        up(&mutex);
         wake_up(&wait_queue);
-        atomic_set(&work, atomic_read(&work) + allocateB);
         printk("PROCESS_B release work\n");
     } else {//PROCESS_C
+        down(&mutex);
+        work = work + allocateC;
+        up(&mutex);
         wake_up(&wait_queue);
-        atomic_set(&work, atomic_read(&work) + allocateC);
         printk("PROCESS_C release work\n");
     }
-    return len;
+    return 0;
 }
 
 static int dev_release(struct inode *inodep, struct file *filep) {

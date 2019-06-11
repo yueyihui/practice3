@@ -35,27 +35,25 @@ int main(int argc, const char *argv[])
 
     int identify;//process id for kernel module
     char need;
-    char release;
     if (!strcmp(argv[1], "PROCESS_A")) {
         identify = 0;
         need = 3;
-        release = 4;
     } else if (!strcmp(argv[1], "PROCESS_B")) {
         identify = 1;
         need = 0;
-        release = 4;
     } else if (!strcmp(argv[1], "PROCESS_C")) {
         identify = 2;
         need = 3;
-        release = 8;
     } else {
         perror("must be parameter PROCESS_A or PROCESS_B or PROCESS_C");
         return -1;
     }
 
-    ioctl(fd, STATE_A, identify);
+    ioctl(fd, STATE_A, identify);//tell the driver how am i
 
     read(fd, &need, 1); // get resource
+
+    write(fd, NULL, 0);// release resource
     
     return 0;
 }
