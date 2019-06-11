@@ -1,14 +1,14 @@
 ccflags-y := -std=gnu11 -Wno-declaration-after-statement
 
-obj-m+=ebbchar.o
+obj-m+=banker.o
 
-all: practice5 testebbchar
+all: practice3 testbanker
 	make -C /lib/modules/$(shell uname -r)/build/ DBGFLAGS=-DDBG M=$(PWD) modules
 
-practice5: practice5.c
+practice3: practice3.c
 	gcc -Wall -g3 -o $@ $^
 
-testebbchar: testebbchar.c
+testbanker: testbanker.c
 	gcc -Wall -g3 -o $@ $^
 
 clean:

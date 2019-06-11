@@ -27,7 +27,7 @@ int main(int argc, const char *argv[])
     }
 
     int ret, fd;
-    fd = open("/dev/ebbchar", O_RDWR);             // Open the device with read/write access
+    fd = open("/dev/bankeralgorithm", O_RDWR);             // Open the device with read/write access
     if (fd < 0) {
         perror("Failed to open the device...");
         return errno;
