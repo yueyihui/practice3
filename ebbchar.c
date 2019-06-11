@@ -160,11 +160,11 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 checkA:
         down(&mutex);
         if (request > work) {
-            up(&mutex);
-
             DECLARE_WAITQUEUE(process_a, current);
             add_wait_queue(&wait_queue, &process_a);
             set_current_state(TASK_INTERRUPTIBLE);
+            up(&mutex);
+
             schedule();
             remove_wait_queue(&wait_queue, &process_a);
             set_current_state(TASK_RUNNING);
@@ -188,11 +188,11 @@ checkA:
 checkB:
         down(&mutex);
         if (request > work) {
-            up(&mutex);
-
             DECLARE_WAITQUEUE(process_b, current);
             add_wait_queue(&wait_queue, &process_b);
             set_current_state(TASK_INTERRUPTIBLE);
+            up(&mutex);
+
             schedule();
             remove_wait_queue(&wait_queue, &process_b);
             set_current_state(TASK_RUNNING);
@@ -216,11 +216,11 @@ checkB:
 checkC:
         down(&mutex);
         if (request > work) {
-            up(&mutex);
-
             DECLARE_WAITQUEUE(process_c, current);
             add_wait_queue(&wait_queue, &process_c);
             set_current_state(TASK_INTERRUPTIBLE);
+            up(&mutex);
+
             schedule();
             remove_wait_queue(&wait_queue, &process_c);
             set_current_state(TASK_RUNNING);
