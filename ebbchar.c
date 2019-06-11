@@ -28,11 +28,10 @@ MODULE_VERSION("0.1");            ///< A version number to inform users
 static int    devId;                  ///< Stores the device number -- determined automatically
 static struct class*  ebbcharClass  = NULL; ///< The device-driver class struct pointer
 static struct device* ebbcharDevice = NULL; ///< The device-driver device struct pointer
-static pid_t  pid[3];             //pid[0] = process A, pid[1] = process B, pid[2] = process C
+static pid_t  pid[3] = {-1, -1, -1};             //pid[0] = process A, pid[1] = process B, pid[2] = process C
 
 DEFINE_SEMAPHORE(mutex);
 wait_queue_head_t wait_queue;
-
 
 int maxA;
 int maxB;
@@ -48,7 +47,7 @@ int needC;
 
 int work;
 
-bool flags[3] = {false, false, false};
+bool flags = false;
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
@@ -101,8 +100,8 @@ static long practice_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
     switch (cmd) {
         case STATE_A:
 
-            if (!flags[STATE_A]) {
-                flags[STATE_A] = true;
+            if (!flags) {
+                flags = true;
                 needA = 3;
                 needB = 0;
                 needC = 3;
@@ -160,8 +159,6 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 
 checkA:
         down(&mutex);
-        printk("requestA %d\n", request);
-        printk("work %d\n", work);
         if (request > work) {
             up(&mutex);
 
@@ -181,7 +178,7 @@ checkA:
         down(&mutex);
         work = work - request;
         up(&mutex);
-        printk("%s\n","PROCESS_A get resource");
+        printk("%s\n","PROCESS_A obtain resource");
     } else if (current->pid == pid[PROCESS_B]) {
 
         if (needB == 0 || request > needB) {
@@ -190,8 +187,6 @@ checkA:
 
 checkB:
         down(&mutex);
-        printk("requestB %d\n", request);
-        printk("work %d\n", work);
         if (request > work) {
             up(&mutex);
 
@@ -211,7 +206,7 @@ checkB:
         down(&mutex);
         work = work - request;
         up(&mutex);
-        printk("%s\n","PROCESS_B get resource");
+        printk("%s\n","PROCESS_B obtain resource");
     } else {//PROCESS_C
 
         if (needC == 0 || request > needC) {
@@ -220,8 +215,6 @@ checkB:
 
 checkC:
         down(&mutex);
-        printk("requestC %d\n", request);
-        printk("work %d\n", work);
         if (request > work) {
             up(&mutex);
 
@@ -241,7 +234,7 @@ checkC:
         down(&mutex);
         work = work - request;
         up(&mutex);
-        printk("%s\n","PROCESS_C get resource");
+        printk("%s\n","PROCESS_C obtain resource");
     }
 
     return 0;
@@ -253,26 +246,54 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
         work = work + allocateA;
         up(&mutex);
         wake_up(&wait_queue);
-        printk("PROCESS_A release work\n");
+        printk("PROCESS_A release resource\n");
     } else if (current->pid == pid[PROCESS_B]) {
         down(&mutex);
         work = work + allocateB;
-        printk("%d\n", work);
         up(&mutex);
         wake_up(&wait_queue);
-        printk("PROCESS_B release work\n");
+        printk("PROCESS_B release resource\n");
     } else {//PROCESS_C
         down(&mutex);
         work = work + allocateC;
         up(&mutex);
         wake_up(&wait_queue);
-        printk("PROCESS_C release work\n");
+        printk("PROCESS_C release resource\n");
     }
     return 0;
 }
 
 static int dev_release(struct inode *inodep, struct file *filep) {
-    printk(KERN_INFO "EBBChar: Device successfully closed\n");
+    if (current->pid == pid[PROCESS_A]) {
+        pid[PROCESS_A] = -2;
+        if (pid[PROCESS_A] == -2 && pid[PROCESS_B] == -2 && pid[PROCESS_C] == -2) {//for reset all elements
+            pid[PROCESS_A] = -1;
+            pid[PROCESS_B] = -1;
+            pid[PROCESS_C] = -1;
+            flags = false;
+        }
+        printk(KERN_INFO "EBBChar: PROCESS_A Device successfully closed\n");
+    } else if (current->pid == pid[PROCESS_B]) {
+        pid[PROCESS_B] = -2;
+        if (pid[PROCESS_A] == -2 && pid[PROCESS_B] == -2 && pid[PROCESS_C] == -2) {//for reset all elements
+            pid[PROCESS_A] = -1;
+            pid[PROCESS_B] = -1;
+            pid[PROCESS_C] = -1;
+            flags = false;
+        }
+        printk(KERN_INFO "EBBChar: PROCESS_B Device successfully closed\n");
+    } else if (current->pid == pid[PROCESS_C]) {
+        pid[PROCESS_C] = -2;
+        if (pid[PROCESS_A] == -2 && pid[PROCESS_B] == -2 && pid[PROCESS_C] == -2) {//for reset all elements
+            pid[PROCESS_A] = -1;
+            pid[PROCESS_B] = -1;
+            pid[PROCESS_C] = -1;
+            flags = false;
+        }
+        printk(KERN_INFO "EBBChar: PROCESS_C Device successfully closed\n");
+    } else {
+        printk(KERN_INFO "EBBChar: Device successfully closed\n");
+    }
     return 0;
 }
 
