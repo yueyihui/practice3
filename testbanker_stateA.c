@@ -34,24 +34,37 @@ int main(int argc, const char *argv[])
     }
 
     int identify;//process id for kernel module
-    char need;
+    char request;
+    char initReq;
+    unsigned int need;
+
     if (!strcmp(argv[1], "PROCESS_A")) {
+        need = 6;
         identify = 0;
-        need = 3;
+        request = 3;
+        initReq = 1;
     } else if (!strcmp(argv[1], "PROCESS_B")) {
+        need = 4;
         identify = 1;
-        need = 0;
+        request = 0;
+        initReq = 4;
     } else if (!strcmp(argv[1], "PROCESS_C")) {
+        need = 8;
         identify = 2;
-        need = 3;
+        request = 3;
+        initReq = 5;
     } else {
         perror("must be parameter PROCESS_A or PROCESS_B or PROCESS_C");
         return -1;
     }
 
-    ioctl(fd, STATE_A, identify);//tell the driver how am i
+    ioctl(fd, need, identify);//tell the driver how am i
 
-    read(fd, &need, 1); // get resource
+    read(fd, &initReq, 1); // get resource
+
+    sleep(1); //wait for three process are achieves State A
+
+    read(fd, &request, 1); // get resource
 
     write(fd, NULL, 0);// release resource
     

@@ -18,8 +18,8 @@ void exec_child(char* pName)
     pid_t pid = fork();
     if (pid == 0) {
         char* cwd = getcwd(NULL, 0);
-        char* process = (char*) malloc(strlen(cwd) + strlen("/testbanker"));
-        sprintf(process, "%s/%s", cwd, "testbanker");
+        char* process = (char*) malloc(strlen(cwd) + strlen("/testbanker_stateA"));
+        sprintf(process, "%s/%s", cwd, "testbanker_stateA");
         char* const argp[] = {process, pName, NULL};
         execvp(argp[0], argp);
         free(process);

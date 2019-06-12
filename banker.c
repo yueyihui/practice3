@@ -33,21 +33,17 @@ static pid_t  pid[3] = {-1, -1, -1};             //pid[0] = process A, pid[1] = 
 static DEFINE_SEMAPHORE(mutex);
 static wait_queue_head_t wait_queue;
  
-static int maxA;
-static int maxB;
-static int maxC;
- 
-static int allocateA;
-static int allocateB;
-static int allocateC;
+static int allocateA = 0;
+static int allocateB = 0;
+static int allocateC = 0;
  
 static int needA;
 static int needB;
 static int needC;
  
-static int work;
+static int work = 12;
  
-static bool flags = false;
+//static bool flags = false;
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
@@ -96,41 +92,22 @@ static int __init banker_init(void) {
     return 0;
 }
 
-static long banker_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
-    switch (cmd) {
-        case STATE_A:
+static long banker_ioctl(struct file *filp, unsigned int need, unsigned long identify) {
 
-            if (!flags) {
-                flags = true;
-                needA = 3;
-                needB = 0;
-                needC = 3;
-
-                allocateA = 1;
-                allocateB = 4;
-                allocateC = 5;
-
-                work = 12 - allocateA - allocateB - allocateC;
-            }
-
-            if (arg == PROCESS_A) {// determined which process is A
-                printk("Banker: process A involked\n");
-                pid[PROCESS_A] = current->pid; 
-            } else if (arg == PROCESS_B) {// determined which process is B
-                pid[PROCESS_B] = current->pid; 
-                printk("Banker: process B involked\n");
-            } else {// determined which process is C
-                pid[PROCESS_C] = current->pid; 
-                printk("Banker: process C involked\n");
-            }
-            break;
-        case STATE_B:
-
-            break;
-        case 2:
-
-            break;
+    if (identify == PROCESS_A) {// determined which process is A
+        printk("Banker: process A involked\n");
+        pid[PROCESS_A] = current->pid; 
+        needA = need;
+    } else if (identify == PROCESS_B) {// determined which process is B
+        pid[PROCESS_B] = current->pid; 
+        printk("Banker: process B involked\n");
+        needB = need;
+    } else {// determined which process is C
+        pid[PROCESS_C] = current->pid; 
+        printk("Banker: process C involked\n");
+        needC = need;
     }
+
     return 0;
 }
 
@@ -152,7 +129,6 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
     char request = *data;
     kfree(data);
     if (current->pid == pid[PROCESS_A]) {
-
         if (needA == 0 || request > needA) {
             return 0;
         }  
@@ -244,18 +220,21 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
     if (current->pid == pid[PROCESS_A]) {
         down(&mutex);
         work = work + allocateA;
+        allocateA = 0;
         up(&mutex);
         wake_up(&wait_queue);
         printk("Banker: PROCESS_A release resource\n");
     } else if (current->pid == pid[PROCESS_B]) {
         down(&mutex);
         work = work + allocateB;
+        allocateB = 0;
         up(&mutex);
         wake_up(&wait_queue);
         printk("Banker: PROCESS_B release resource\n");
     } else {//PROCESS_C
         down(&mutex);
         work = work + allocateC;
+        allocateC = 0;
         up(&mutex);
         wake_up(&wait_queue);
         printk("Banker: PROCESS_C release resource\n");
@@ -265,31 +244,10 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 
 static int dev_release(struct inode *inodep, struct file *filep) {
     if (current->pid == pid[PROCESS_A]) {
-        pid[PROCESS_A] = -2;
-        if (pid[PROCESS_A] == -2 && pid[PROCESS_B] == -2 && pid[PROCESS_C] == -2) {//for reset all elements
-            pid[PROCESS_A] = -1;
-            pid[PROCESS_B] = -1;
-            pid[PROCESS_C] = -1;
-            flags = false;
-        }
         printk(KERN_INFO "Banker: PROCESS_A Device successfully closed\n");
     } else if (current->pid == pid[PROCESS_B]) {
-        pid[PROCESS_B] = -2;
-        if (pid[PROCESS_A] == -2 && pid[PROCESS_B] == -2 && pid[PROCESS_C] == -2) {//for reset all elements
-            pid[PROCESS_A] = -1;
-            pid[PROCESS_B] = -1;
-            pid[PROCESS_C] = -1;
-            flags = false;
-        }
         printk(KERN_INFO "Banker: PROCESS_B Device successfully closed\n");
     } else if (current->pid == pid[PROCESS_C]) {
-        pid[PROCESS_C] = -2;
-        if (pid[PROCESS_A] == -2 && pid[PROCESS_B] == -2 && pid[PROCESS_C] == -2) {//for reset all elements
-            pid[PROCESS_A] = -1;
-            pid[PROCESS_B] = -1;
-            pid[PROCESS_C] = -1;
-            flags = false;
-        }
         printk(KERN_INFO "Banker: PROCESS_C Device successfully closed\n");
     } else {
         printk(KERN_INFO "Banker: Device successfully closed\n");
