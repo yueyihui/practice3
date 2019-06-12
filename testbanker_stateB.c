@@ -45,13 +45,13 @@ int main(int argc, const char *argv[])
         request = max - allocation;
     } else if (!strcmp(argv[1], "PROCESS_B")) {
         identify = 1;
-        max = 4;
+        max = 6;
         allocation = 4;
         request = max - allocation;
     } else if (!strcmp(argv[1], "PROCESS_C")) {
         identify = 2;
         max = 8;
-        allocation = 5;
+        allocation = 6;
         request = max - allocation;
     } else {
         perror("must be parameter PROCESS_A or PROCESS_B or PROCESS_C");

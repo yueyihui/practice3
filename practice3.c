@@ -3,23 +3,49 @@
 #include <string.h>
 #include <stdlib.h>
 
-void exec_child(char*);
+void exec_A(char*);
+void exec_B(char*);
 
 int main(int argc, const char *argv[])
 {
-    exec_child("PROCESS_A");
-    exec_child("PROCESS_B");
-    exec_child("PROCESS_C");
+    if (argc < 2) {
+        printf("please type practice3 STATE_A or STATE_B\n");
+        return -1;
+    } else if (!strcmp(argv[1], "STATE_A")) {
+        exec_A("PROCESS_A");
+        exec_A("PROCESS_B");
+        exec_A("PROCESS_C");
+    } else if (!strcmp(argv[1], "STATE_B")) {
+        exec_B("PROCESS_A");
+        exec_B("PROCESS_B");
+        exec_B("PROCESS_C");
+    } else {
+        printf("please type practice3 STATE_A or STATE_B\n");
+    }
+
     return 0;
 }
 
-void exec_child(char* pName)
+void exec_A(char* pName)
 {
     pid_t pid = fork();
     if (pid == 0) {
         char* cwd = getcwd(NULL, 0);
         char* process = (char*) malloc(strlen(cwd) + strlen("/testbanker_stateA"));
         sprintf(process, "%s/%s", cwd, "testbanker_stateA");
+        char* const argp[] = {process, pName, NULL};
+        execvp(argp[0], argp);
+        free(process);
+    }
+}
+
+void exec_B(char* pName)
+{
+    pid_t pid = fork();
+    if (pid == 0) {
+        char* cwd = getcwd(NULL, 0);
+        char* process = (char*) malloc(strlen(cwd) + strlen("/testbanker_stateB"));
+        sprintf(process, "%s/%s", cwd, "testbanker_stateB");
         char* const argp[] = {process, pName, NULL};
         execvp(argp[0], argp);
         free(process);
