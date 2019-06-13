@@ -6,15 +6,13 @@
 #include <linux/uaccess.h>        // Required for the copy to user function
 #include <linux/thread_info.h>    // current macro
 #include <linux/semaphore.h>
+#include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/slab.h>
+#include <linux/version.h>
 
 #define  DEVICE_NAME "bankeralgorithm"    ///< The device will appear at /dev/bankeralgorithm using this value
 #define  CLASS_NAME  "banker"        ///< The device class -- this is a character device driver
-
-//These two state for practice requirements 1.
-#define  STATE_A    0 //allocation=(1,4,5) max=(4,4,8)
-#define  STATE_B    1 //allocation=(1,4,6) max=(4,6,8)
 
 #define  PROCESS_A  0
 #define  PROCESS_B  1
@@ -30,7 +28,10 @@ static struct class*  ebbcharClass  = NULL; ///< The device-driver class struct 
 static struct device* ebbcharDevice = NULL; ///< The device-driver device struct pointer
 static pid_t  pid[3] = {-1, -1, -1};             //pid[0] = process A, pid[1] = process B, pid[2] = process C
 
-static DEFINE_SEMAPHORE(mutex);
+static DEFINE_SEMAPHORE(mtx_sem);
+#define MUTEX_LOCK    down(&mtx_sem);
+#define MUTEX_UNLOCK  up(&mtx_sem);
+
 static wait_queue_head_t wait_queue;
  
 static int allocateA = 0;
@@ -125,8 +126,9 @@ static int dev_open(struct inode *inodep, struct file *filep) {
 
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {//get resource
     char* data = kmalloc(len, GFP_KERNEL);
+    char request;
     copy_from_user(data, buffer, len);
-    char request = *data;
+    request = *data;
     kfree(data);
     if (current->pid == pid[PROCESS_A]) {
         if (needA == 0 || request > needA) {
@@ -134,26 +136,28 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
         }  
 
 checkA:
-        down(&mutex);
+        MUTEX_LOCK
         if (request > work) {
             DECLARE_WAITQUEUE(process_a, current);
             add_wait_queue(&wait_queue, &process_a);
             set_current_state(TASK_INTERRUPTIBLE);
-            up(&mutex);
+        MUTEX_UNLOCK
 
             schedule();
             remove_wait_queue(&wait_queue, &process_a);
             set_current_state(TASK_RUNNING);
             goto checkA;
         } else {
-            up(&mutex);
+            MUTEX_UNLOCK
         }
 
         allocateA += request;
         needA = needA - request;
-        down(&mutex);
-        work = work - request;
-        up(&mutex);
+
+        MUTEX_LOCK
+            work = work - request;
+        MUTEX_UNLOCK
+
         printk("Banker: %s\n","PROCESS_A obtain resource");
     } else if (current->pid == pid[PROCESS_B]) {
 
@@ -162,26 +166,28 @@ checkA:
         }  
 
 checkB:
-        down(&mutex);
+        MUTEX_LOCK
         if (request > work) {
             DECLARE_WAITQUEUE(process_b, current);
             add_wait_queue(&wait_queue, &process_b);
             set_current_state(TASK_INTERRUPTIBLE);
-            up(&mutex);
+        MUTEX_UNLOCK
 
             schedule();
             remove_wait_queue(&wait_queue, &process_b);
             set_current_state(TASK_RUNNING);
             goto checkB;
         } else {
-            up(&mutex);
+            MUTEX_UNLOCK
         }
 
         allocateB += request;
         needB = needB - request;
-        down(&mutex);
-        work = work - request;
-        up(&mutex);
+
+        MUTEX_LOCK
+            work = work - request;
+        MUTEX_UNLOCK
+
         printk("Banker: %s\n","PROCESS_B obtain resource");
     } else {//PROCESS_C
 
@@ -190,26 +196,28 @@ checkB:
         }  
 
 checkC:
-        down(&mutex);
+        MUTEX_LOCK
         if (request > work) {
             DECLARE_WAITQUEUE(process_c, current);
             add_wait_queue(&wait_queue, &process_c);
             set_current_state(TASK_INTERRUPTIBLE);
-            up(&mutex);
+        MUTEX_UNLOCK
 
             schedule();
             remove_wait_queue(&wait_queue, &process_c);
             set_current_state(TASK_RUNNING);
             goto checkC;
         } else {
-            up(&mutex);
+            MUTEX_UNLOCK
         }
 
         allocateC += request;
         needC = needC - request;
-        down(&mutex);
-        work = work - request;
-        up(&mutex);
+
+        MUTEX_LOCK
+            work = work - request;
+        MUTEX_UNLOCK
+
         printk("Banker: %s\n","PROCESS_C obtain resource");
     }
 
@@ -218,24 +226,24 @@ checkC:
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {//release resource
     if (current->pid == pid[PROCESS_A]) {
-        down(&mutex);
-        work = work + allocateA;
-        allocateA = 0;
-        up(&mutex);
+        MUTEX_LOCK
+            work = work + allocateA;
+            allocateA = 0;
+        MUTEX_UNLOCK
         wake_up(&wait_queue);
         printk("Banker: PROCESS_A release resource\n");
     } else if (current->pid == pid[PROCESS_B]) {
-        down(&mutex);
-        work = work + allocateB;
-        allocateB = 0;
-        up(&mutex);
+        MUTEX_LOCK
+            work = work + allocateB;
+            allocateB = 0;
+        MUTEX_UNLOCK
         wake_up(&wait_queue);
         printk("Banker: PROCESS_B release resource\n");
     } else {//PROCESS_C
-        down(&mutex);
-        work = work + allocateC;
-        allocateC = 0;
-        up(&mutex);
+        MUTEX_LOCK
+            work = work + allocateC;
+            allocateC = 0;
+        MUTEX_UNLOCK
         wake_up(&wait_queue);
         printk("Banker: PROCESS_C release resource\n");
     }

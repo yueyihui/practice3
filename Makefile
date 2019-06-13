@@ -1,5 +1,3 @@
-ccflags-y := -std=gnu11 -Wno-declaration-after-statement
-
 obj-m+=banker.o
 
 all: practice3 testbanker_stateA testbanker_stateB

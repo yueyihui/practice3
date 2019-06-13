@@ -9,18 +9,18 @@ void exec_B(char*);
 int main(int argc, const char *argv[])
 {
     if (argc < 2) {
-        printf("please type practice3 STATE_A or STATE_B\n");
+        printf("please type practice3 A for STATE_A or B for STATE_B\n");
         return -1;
-    } else if (!strcmp(argv[1], "STATE_A")) {
+    } else if (!strcmp(argv[1], "A")) {
         exec_A("PROCESS_A");
         exec_A("PROCESS_B");
         exec_A("PROCESS_C");
-    } else if (!strcmp(argv[1], "STATE_B")) {
+    } else if (!strcmp(argv[1], "B")) {
         exec_B("PROCESS_A");
         exec_B("PROCESS_B");
         exec_B("PROCESS_C");
     } else {
-        printf("please type practice3 STATE_A or STATE_B\n");
+        printf("please type practice3 A for STATE_A or B for STATE_B\n");
     }
 
     return 0;
